@@ -10,6 +10,13 @@ function formatFechaHora(fecha?: string, hora?: string): string {
   return hora ? `${dateStr} ${hora}` : dateStr
 }
 
+function todayYMD(): string {
+  const d = new Date()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${day}`
+}
+
 function TareaItem({
   tarea,
   onEdit,
@@ -75,8 +82,14 @@ function TareaItem({
           className="flex-1 text-left min-w-0"
           onClick={() => !tarea.completada && onEdit(tarea)}
         >
-          <div className={`text-sm font-medium truncate ${tarea.completada ? 'line-through text-gray-400' : 'text-gray-800'}`}>
-            {tarea.nombre}
+          <div className={`flex items-center gap-1.5 text-sm font-medium ${tarea.completada ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+            <span className="truncate">{tarea.nombre}</span>
+            {tarea.recurrenciaId && !tarea.completada && (
+              <svg className="flex-shrink-0 text-indigo-400" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+                <path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+              </svg>
+            )}
           </div>
           <div className="flex items-center gap-2 mt-0.5">
             {tarea.categoria && !tarea.completada && (
@@ -117,8 +130,13 @@ export default function Bandeja({ onOpenModal }: { onOpenModal: (t?: Tarea) => v
     )
   }
 
+  // En la bandeja, las instancias recurrentes solo se muestran las de hoy
+  // (las futuras viven en IndexedDB y aparecen en el calendario).
+  const hoy = todayYMD()
+  const visibles = tareas.filter((t) => !t.recurrenciaId || t.fecha === hoy)
+
   // Sort: incomplete first (by fecha asc, then sueltas), then completed
-  const incompletas = tareas
+  const incompletas = visibles
     .filter((t) => !t.completada)
     .sort((a, b) => {
       if (a.fecha && b.fecha) return a.fecha.localeCompare(b.fecha)
@@ -127,7 +145,7 @@ export default function Bandeja({ onOpenModal }: { onOpenModal: (t?: Tarea) => v
       return a.creadaEn.localeCompare(b.creadaEn)
     })
 
-  const completadas = tareas.filter((t) => t.completada)
+  const completadas = visibles.filter((t) => t.completada)
 
   return (
     <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24">

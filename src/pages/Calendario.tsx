@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { Tarea } from '../types'
 import { useTareas } from '../context/TareasContext'
 import EtiquetaCategoria from '../components/EtiquetaCategoria'
@@ -80,9 +80,15 @@ function DayColumn({ date, tareas, isToday, onEdit, onToggle }: DayColumnProps) 
                 )}
               </button>
               <div className="flex-1 min-w-0">
-                <div className={`text-sm truncate ${t.completada ? 'line-through text-gray-400' : 'text-gray-800 font-medium'}`}>
-                  {t.hora && <span className="text-indigo-500 font-semibold mr-1">{t.hora}</span>}
-                  {t.nombre}
+                <div className={`flex items-center gap-1 text-sm ${t.completada ? 'line-through text-gray-400' : 'text-gray-800 font-medium'}`}>
+                  {t.hora && <span className="text-indigo-500 font-semibold mr-0.5">{t.hora}</span>}
+                  <span className="truncate">{t.nombre}</span>
+                  {t.recurrenciaId && !t.completada && (
+                    <svg className="flex-shrink-0 text-indigo-400" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+                      <path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+                    </svg>
+                  )}
                 </div>
                 {t.categoria && !t.completada && (
                   <div className="mt-0.5">
@@ -99,10 +105,15 @@ function DayColumn({ date, tareas, isToday, onEdit, onToggle }: DayColumnProps) 
 }
 
 export default function Calendario({ onEdit }: { onEdit: (t: Tarea) => void }) {
-  const { tareas, toggleCompletada } = useTareas()
+  const { tareas, toggleCompletada, generarInstanciasParaSemana } = useTareas()
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()))
 
   const today = toYMD(new Date())
+
+  // Genera las instancias recurrentes de la semana visible (al montar y al navegar)
+  useEffect(() => {
+    generarInstanciasParaSemana(weekStart)
+  }, [weekStart, generarInstanciasParaSemana])
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
   const weekEnd = days[6]

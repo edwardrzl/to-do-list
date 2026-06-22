@@ -14,7 +14,29 @@ export interface Tarea {
   hora?: string    // 'HH:MM'
   completada: boolean
   creadaEn: string // ISO timestamp
+  recurrenciaId?: string | null // si tiene valor, es una instancia de una recurrencia
 }
+
+// dias usa la convención nativa de Date.getDay(): 0=Dom, 1=Lun, ... 6=Sáb
+export interface Recurrencia {
+  id: string
+  nombre: string
+  categoria?: Categoria
+  hora?: string
+  dias: number[]
+  creadaEn: string
+}
+
+// Chips del modal en orden Lun..Dom, mapeados a valores de Date.getDay()
+export const DIAS_SEMANA: { label: string; value: number }[] = [
+  { label: 'Lun', value: 1 },
+  { label: 'Mar', value: 2 },
+  { label: 'Mié', value: 3 },
+  { label: 'Jue', value: 4 },
+  { label: 'Vie', value: 5 },
+  { label: 'Sáb', value: 6 },
+  { label: 'Dom', value: 0 },
+]
 
 export const CATEGORIAS: Categoria[] = [
   'Trabajo',
