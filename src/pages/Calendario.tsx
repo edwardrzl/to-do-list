@@ -35,10 +35,9 @@ interface DayColumnProps {
   recurrencias: Recurrencia[]
   isToday: boolean
   onEdit: (t: Tarea) => void
-  onToggle: (id: string) => void
 }
 
-function DayColumn({ date, tareas, recurrencias, isToday, onEdit, onToggle }: DayColumnProps) {
+function DayColumn({ date, tareas, recurrencias, isToday, onEdit }: DayColumnProps) {
   const dayIdx = (date.getDay() + 6) % 7
   const dayName = DIAS[dayIdx]
   const dayNum = date.getDate()
@@ -73,8 +72,8 @@ function DayColumn({ date, tareas, recurrencias, isToday, onEdit, onToggle }: Da
               onClick={() => onEdit(t)}
               className={`w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors ${terminal ? 'opacity-50' : 'hover:bg-white/80'}`}
             >
-              <button
-                onClick={(e) => { e.stopPropagation(); onToggle(t.id) }}
+              {/* Indicador de estado (solo lectura — el Calendario no cambia estados) */}
+              <span
                 className="flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center"
                 style={{
                   borderColor: t.completada ? '#6366f1' : inconclusa ? '#9ca3af' : '#d1d5db',
@@ -91,7 +90,7 @@ function DayColumn({ date, tareas, recurrencias, isToday, onEdit, onToggle }: Da
                     <line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>
                   </svg>
                 )}
-              </button>
+              </span>
               <div className="flex-1 min-w-0">
                 <div className={`flex items-center gap-1 text-sm ${terminal ? 'line-through text-gray-400' : 'text-gray-800 font-medium'}`}>
                   <IndicadorTarea tarea={t} recurrencias={recurrencias} />
@@ -120,7 +119,7 @@ function DayColumn({ date, tareas, recurrencias, isToday, onEdit, onToggle }: Da
 }
 
 export default function Calendario({ onEdit }: { onEdit: (t: Tarea) => void }) {
-  const { tareas, recurrencias, toggleCompletada, generarInstanciasParaSemana } = useTareas()
+  const { tareas, recurrencias, generarInstanciasParaSemana } = useTareas()
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()))
 
   const today = toYMD(new Date())
@@ -191,7 +190,6 @@ export default function Calendario({ onEdit }: { onEdit: (t: Tarea) => void }) {
             recurrencias={recurrencias}
             isToday={toYMD(d) === today}
             onEdit={onEdit}
-            onToggle={toggleCompletada}
           />
         ))}
       </div>

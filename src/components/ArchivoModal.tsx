@@ -8,7 +8,17 @@ function formatFecha(fecha?: string, hora?: string): string {
   return hora ? `${dateStr} ${hora}` : dateStr
 }
 
-// Lista de solo lectura de las tareas archivadas. Sin edición ni acciones.
+function todayYMD(): string {
+  const d = new Date()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${day}`
+}
+
+// Lista de solo lectura del Archivo. Sin edición ni acciones. Muestra:
+// - tareas archivadas (terminales con más de 7 días), y
+// - instancias recurrentes de días pasados (done/inconcluso), aunque no estén
+//   archivadas todavía (FIX #6): para consultar "este día no fui al gym".
 export default function ArchivoModal({
   tareas,
   onClose,
@@ -16,10 +26,20 @@ export default function ArchivoModal({
   tareas: Tarea[]
   onClose: () => void
 }) {
+  const hoy = todayYMD()
   const archivadas = tareas
-    .filter((t) => t.archivada)
+    .filter(
+      (t) =>
+        t.archivada ||
+        (!!t.recurrenciaId &&
+          !!t.fecha &&
+          t.fecha < hoy &&
+          (t.estado === 'done' || t.estado === 'inconcluso'))
+    )
     .sort((a, b) =>
-      (b.estadoCambiadoEn ?? b.creadaEn).localeCompare(a.estadoCambiadoEn ?? a.creadaEn)
+      (b.fecha ?? b.estadoCambiadoEn ?? b.creadaEn).localeCompare(
+        a.fecha ?? a.estadoCambiadoEn ?? a.creadaEn
+      )
     )
 
   return (

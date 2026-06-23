@@ -4,6 +4,7 @@ import { KANBAN_COLUMNAS } from '../types'
 import { useTareas } from '../context/TareasContext'
 import EtiquetaCategoria from '../components/EtiquetaCategoria'
 import IndicadorTarea from '../components/IndicadorTarea'
+import ConfirmInconclusoModal from '../components/ConfirmInconclusoModal'
 import { getMonday, addDays, toYMD } from '../lib/tareas'
 
 function formatFecha(fecha?: string, hora?: string): string {
@@ -18,12 +19,15 @@ const ORDEN = KANBAN_COLUMNAS.map((c) => c.estado)
 interface CardProps {
   tarea: Tarea
   recurrencias: Recurrencia[]
+  // FIX #3: solo las instancias recurrentes de HOY (y las no recurrentes)
+  // permiten cambiar de estado. Las recurrentes futuras solo se editan.
+  interactivo: boolean
   onEdit: (t: Tarea) => void
   onMover: (id: string, estado: EstadoTarea) => void
-  onInconcluso: (id: string) => void
+  onInconcluso: (t: Tarea) => void
 }
 
-function KanbanCard({ tarea, recurrencias, onEdit, onMover, onInconcluso }: CardProps) {
+function KanbanCard({ tarea, recurrencias, interactivo, onEdit, onMover, onInconcluso }: CardProps) {
   const idx = ORDEN.indexOf(tarea.estado)
   const anterior = idx > 0 ? ORDEN[idx - 1] : null
   const siguiente = idx < ORDEN.length - 1 ? ORDEN[idx + 1] : null
@@ -47,38 +51,47 @@ function KanbanCard({ tarea, recurrencias, onEdit, onMover, onInconcluso }: Card
         </div>
       )}
 
-      {/* Mover entre columnas + marcar inconclusa */}
-      <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-gray-50">
-        <button
-          onClick={(e) => { e.stopPropagation(); if (anterior) onMover(tarea.id, anterior) }}
-          disabled={!anterior}
-          className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-500 enabled:hover:bg-gray-100 disabled:opacity-25 transition-colors"
-          aria-label="Mover a la columna anterior"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="15 18 9 12 15 6"/>
+      {/* Mover entre columnas + marcar inconclusa (solo si es interactiva) */}
+      {interactivo ? (
+        <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-gray-50">
+          <button
+            onClick={(e) => { e.stopPropagation(); if (anterior) onMover(tarea.id, anterior) }}
+            disabled={!anterior}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-500 enabled:hover:bg-gray-100 disabled:opacity-25 transition-colors"
+            aria-label="Mover a la columna anterior"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onInconcluso(tarea) }}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:bg-red-50 hover:text-red-400 transition-colors"
+            aria-label="Marcar inconclusa"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>
+            </svg>
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); if (siguiente) onMover(tarea.id, siguiente) }}
+            disabled={!siguiente}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-500 enabled:hover:bg-gray-100 disabled:opacity-25 transition-colors"
+            aria-label="Mover a la columna siguiente"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-1 mt-2.5 pt-2 border-t border-gray-50 text-[11px] text-gray-400">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/>
           </svg>
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onInconcluso(tarea.id) }}
-          className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:bg-red-50 hover:text-red-400 transition-colors"
-          aria-label="Marcar inconclusa"
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>
-          </svg>
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); if (siguiente) onMover(tarea.id, siguiente) }}
-          disabled={!siguiente}
-          className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-500 enabled:hover:bg-gray-100 disabled:opacity-25 transition-colors"
-          aria-label="Mover a la columna siguiente"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="9 18 15 12 9 6"/>
-          </svg>
-        </button>
-      </div>
+          Próxima — solo lectura
+        </div>
+      )}
     </div>
   )
 }
@@ -87,6 +100,7 @@ export default function Kanban({ onEdit }: { onEdit: (t: Tarea) => void }) {
   const { tareas, recurrencias, loading, moverEstado, marcarInconcluso } = useTareas()
   const scrollRef = useRef<HTMLDivElement>(null)
   const [activa, setActiva] = useState(0)
+  const [pendienteInconcluso, setPendienteInconcluso] = useState<Tarea | null>(null)
 
   // Resalta el punto indicador según la columna centrada en el scroll.
   function onScroll() {
@@ -106,6 +120,9 @@ export default function Kanban({ onEdit }: { onEdit: (t: Tarea) => void }) {
 
   // Filtro temporal: solo tareas sin fecha o con fecha dentro de la semana
   // actual (lunes a domingo). Se excluyen archivadas e inconclusas.
+  // FIX #3: las instancias recurrentes PASADAS no aparecen en el Kanban
+  // (quedan congeladas; solo se ven en el Archivo).
+  const hoy = toYMD(new Date())
   const lunes = getMonday(new Date())
   const lo = toYMD(lunes)
   const hi = toYMD(addDays(lunes, 6))
@@ -113,7 +130,8 @@ export default function Kanban({ onEdit }: { onEdit: (t: Tarea) => void }) {
     (t) =>
       !t.archivada &&
       t.estado !== 'inconcluso' &&
-      (!t.fecha || (t.fecha >= lo && t.fecha <= hi))
+      (!t.fecha || (t.fecha >= lo && t.fecha <= hi)) &&
+      !(t.recurrenciaId && t.fecha && t.fecha < hoy)
   )
 
   const porColumna = KANBAN_COLUMNAS.map((c) =>
@@ -157,9 +175,10 @@ export default function Kanban({ onEdit }: { onEdit: (t: Tarea) => void }) {
                       key={t.id}
                       tarea={t}
                       recurrencias={recurrencias}
+                      interactivo={!t.recurrenciaId || t.fecha === hoy}
                       onEdit={onEdit}
                       onMover={moverEstado}
-                      onInconcluso={marcarInconcluso}
+                      onInconcluso={setPendienteInconcluso}
                     />
                   ))
                 )}
@@ -178,6 +197,18 @@ export default function Kanban({ onEdit }: { onEdit: (t: Tarea) => void }) {
           />
         ))}
       </div>
+
+      {pendienteInconcluso && (
+        <ConfirmInconclusoModal
+          tarea={pendienteInconcluso}
+          recurrencias={recurrencias}
+          onCancel={() => setPendienteInconcluso(null)}
+          onConfirm={() => {
+            marcarInconcluso(pendienteInconcluso.id)
+            setPendienteInconcluso(null)
+          }}
+        />
+      )}
     </div>
   )
 }

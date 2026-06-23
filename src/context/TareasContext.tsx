@@ -28,6 +28,7 @@ interface TareasContextValue {
   toggleCompletada: (id: string) => Promise<void>
   moverEstado: (id: string, estado: EstadoTarea) => Promise<void>
   marcarInconcluso: (id: string) => Promise<void>
+  revertirEstado: (id: string) => Promise<void>
   eliminarTarea: (id: string) => Promise<void>
   crearRecurrencia: (data: Omit<Recurrencia, 'id' | 'creadaEn'>) => Promise<void>
   eliminarRecurrenciaCompleta: (recurrenciaId: string) => Promise<void>
@@ -72,14 +73,43 @@ function ymdToDate(ymd: string): Date {
 
 const SIETE_DIAS_MS = 7 * 86_400_000
 
-// Aplica el cambio de racha a una recurrencia cuando una de sus instancias
-// pasa a un estado terminal. Invariante: si una racha es > 0, la otra es 0.
-function aplicarRacha(rec: Recurrencia, estado: 'done' | 'inconcluso'): Recurrencia {
-  const rachaActual = rec.rachaActual ?? 0
-  const rachaInconclusa = rec.rachaInconclusa ?? 0
-  return estado === 'done'
-    ? { ...rec, rachaActual: rachaActual + 1, rachaInconclusa: 0 }
-    : { ...rec, rachaInconclusa: rachaInconclusa + 1, rachaActual: 0 }
+// Recalcula las rachas de una recurrencia SIEMPRE desde el historial real de
+// sus instancias terminales (nunca como contador que se suma/resta a mano).
+// Esto mata el bucle de inflar rachas y hace que revertir un done/inconcluso
+// restaure el valor previo solo, sin guardar nada extra.
+//
+// Algoritmo:
+//   1. Tomar las instancias en estado terminal (done | inconcluso). Las que
+//      están en todo/doing se ignoran.
+//   2. Ordenar por fecha ascendente.
+//   3. Sin terminales → ambas rachas en 0.
+//   4. Según el estado de la MÁS RECIENTE, contar cuántas consecutivas hacia
+//      atrás comparten ese estado (hasta el estado opuesto o el inicio).
+// Invariante: si una racha es > 0, la otra es 0.
+function calcularRachas(
+  recurrenciaId: string,
+  tareas: Tarea[]
+): { rachaActual: number; rachaInconclusa: number } {
+  const terminales = tareas
+    .filter(
+      (t) =>
+        t.recurrenciaId === recurrenciaId &&
+        !!t.fecha &&
+        (t.estado === 'done' || t.estado === 'inconcluso')
+    )
+    .sort((a, b) => a.fecha!.localeCompare(b.fecha!))
+
+  if (terminales.length === 0) return { rachaActual: 0, rachaInconclusa: 0 }
+
+  const ultimoEstado = terminales[terminales.length - 1].estado
+  let count = 0
+  for (let i = terminales.length - 1; i >= 0; i--) {
+    if (terminales[i].estado === ultimoEstado) count++
+    else break
+  }
+  return ultimoEstado === 'done'
+    ? { rachaActual: count, rachaInconclusa: 0 }
+    : { rachaActual: 0, rachaInconclusa: count }
 }
 
 export function TareasProvider({ children }: { children: ReactNode }) {
@@ -125,6 +155,9 @@ export function TareasProvider({ children }: { children: ReactNode }) {
       const fecha = toYMD(dia)
       for (const rec of recs) {
         if (!rec.dias.includes(dow)) continue
+        // FIX #1: nunca generar instancias anteriores a la fecha de creación
+        // de la recurrencia (evita instancias "hacia el pasado").
+        if (fecha < rec.creadaEn.slice(0, 10)) continue
         const key = `${rec.id}|${fecha}`
         if (existentes.has(key)) continue
         existentes.add(key)
@@ -163,14 +196,6 @@ export function TareasProvider({ children }: { children: ReactNode }) {
     ])
     const hoy = toYMD(new Date())
     const ahoraMs = Date.now()
-
-    // Normaliza rachas (defensivo) y permite acumular incrementos.
-    const recById = new Map<string, Recurrencia>(
-      allRecs.map((r) => [
-        r.id,
-        { ...r, rachaActual: r.rachaActual ?? 0, rachaInconclusa: r.rachaInconclusa ?? 0 },
-      ])
-    )
     const tareasCambiadas = new Map<string, Tarea>()
 
     // (1) Auto-marcado de instancias recurrentes vencidas en 'todo'.
@@ -183,8 +208,6 @@ export function TareasProvider({ children }: { children: ReactNode }) {
           completada: false,
           estadoCambiadoEn: new Date().toISOString(),
         })
-        const rec = recById.get(t.recurrenciaId)
-        if (rec) recById.set(rec.id, aplicarRacha(rec, 'inconcluso'))
       }
     }
 
@@ -200,13 +223,21 @@ export function TareasProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    // (3) Recalcular las rachas de TODAS las recurrencias desde el historial
+    // resultante (FIX #2). Nunca se incrementan a mano.
+    const tareasFinales = allTareas.map((t) => tareasCambiadas.get(t.id) ?? t)
+    const recsActualizadas = allRecs.map((rec) => ({
+      ...rec,
+      ...calcularRachas(rec.id, tareasFinales),
+    }))
+
     await Promise.all([...tareasCambiadas.values()].map(saveTarea))
-    await Promise.all([...recById.values()].map(saveRecurrencia))
+    await Promise.all(recsActualizadas.map(saveRecurrencia))
 
     if (tareasCambiadas.size) {
       setTareas((prev) => prev.map((t) => tareasCambiadas.get(t.id) ?? t))
     }
-    setRecurrencias([...recById.values()])
+    setRecurrencias(recsActualizadas)
   }, [])
 
   // Carga inicial + rutina de apertura + generación de la semana actual.
@@ -271,13 +302,21 @@ export function TareasProvider({ children }: { children: ReactNode }) {
   )
 
   // Núcleo de los cambios de estado. Actualiza `estado`, `completada` y
-  // `estadoCambiadoEn`, persiste y, si la tarea es una instancia recurrente que
-  // entra en un estado terminal, actualiza la racha de su recurrencia.
+  // `estadoCambiadoEn`, persiste y, si la tarea es una instancia recurrente,
+  // RECALCULA la racha de su recurrencia desde el historial (FIX #2), para
+  // cualquier transición (done, inconcluso o revertir a todo/doing).
+  //
+  // FIX #3: en instancias recurrentes solo se permite cambiar de estado si la
+  // instancia es de HOY. Las pasadas quedan congeladas; las futuras solo se
+  // editan. (Las tareas no recurrentes no tienen esta restricción.)
+  //
   // Lee de refs (no de closures) y escribe valores concretos para que sea
   // correcto bajo StrictMode (que invoca los updaters dos veces).
   const setEstado = useCallback(async (id: string, nuevoEstado: EstadoTarea) => {
     const tarea = tareasRef.current.find((t) => t.id === id)
     if (!tarea || tarea.estado === nuevoEstado) return
+
+    if (tarea.recurrenciaId && tarea.fecha !== toYMD(new Date())) return
 
     const actualizada: Tarea = {
       ...tarea,
@@ -286,16 +325,17 @@ export function TareasProvider({ children }: { children: ReactNode }) {
       estadoCambiadoEn: new Date().toISOString(),
     }
     await saveTarea(actualizada)
-    setTareas((prev) => prev.map((t) => (t.id === id ? actualizada : t)))
+    const nuevasTareas = tareasRef.current.map((t) => (t.id === id ? actualizada : t))
+    setTareas(nuevasTareas)
 
-    // Racha: solo instancias recurrentes que entran en estado terminal.
-    if (
-      tarea.recurrenciaId &&
-      (nuevoEstado === 'done' || nuevoEstado === 'inconcluso')
-    ) {
+    // Recalcula la racha de la recurrencia desde el historial actualizado.
+    if (tarea.recurrenciaId) {
       const rec = recurrenciasRef.current.find((r) => r.id === tarea.recurrenciaId)
       if (rec) {
-        const actualizadaRec = aplicarRacha(rec, nuevoEstado)
+        const actualizadaRec: Recurrencia = {
+          ...rec,
+          ...calcularRachas(tarea.recurrenciaId, nuevasTareas),
+        }
         await saveRecurrencia(actualizadaRec)
         setRecurrencias((prev) =>
           prev.map((r) => (r.id === rec.id ? actualizadaRec : r))
@@ -326,6 +366,14 @@ export function TareasProvider({ children }: { children: ReactNode }) {
   const marcarInconcluso = useCallback(
     async (id: string) => {
       await setEstado(id, 'inconcluso')
+    },
+    [setEstado]
+  )
+
+  // Revierte cualquier estado terminal de vuelta a 'todo'.
+  const revertirEstado = useCallback(
+    async (id: string) => {
+      await setEstado(id, 'todo')
     },
     [setEstado]
   )
@@ -420,6 +468,7 @@ export function TareasProvider({ children }: { children: ReactNode }) {
         toggleCompletada,
         moverEstado,
         marcarInconcluso,
+        revertirEstado,
         eliminarTarea,
         crearRecurrencia,
         eliminarRecurrenciaCompleta,

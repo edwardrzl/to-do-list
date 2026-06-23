@@ -4,6 +4,7 @@ import { useTareas } from '../context/TareasContext'
 import EtiquetaCategoria from '../components/EtiquetaCategoria'
 import IndicadorTarea from '../components/IndicadorTarea'
 import ArchivoModal from '../components/ArchivoModal'
+import ConfirmInconclusoModal from '../components/ConfirmInconclusoModal'
 
 function formatFechaHora(fecha?: string, hora?: string): string {
   if (!fecha) return ''
@@ -24,6 +25,7 @@ function TareaItem({
   recurrencias,
   onEdit,
   onToggle,
+  onRevertir,
   onInconcluso,
   onDelete,
 }: {
@@ -31,7 +33,8 @@ function TareaItem({
   recurrencias: Recurrencia[]
   onEdit: (t: Tarea) => void
   onToggle: (id: string) => void
-  onInconcluso: (id: string) => void
+  onRevertir: (id: string) => void
+  onInconcluso: (t: Tarea) => void
   onDelete: (id: string) => void
 }) {
   const touchStartX = useRef<number | null>(null)
@@ -74,15 +77,15 @@ function TareaItem({
       <div
         className={`flex items-center gap-3 bg-white px-4 py-3 shadow-sm border border-gray-100 rounded-xl transition-transform duration-200 ${swiped ? '-translate-x-16' : 'translate-x-0'}`}
       >
-        {/* Indicador de estado / completar */}
+        {/* Indicador de estado: activo → completar; terminal → revertir a todo */}
         <button
-          onClick={() => onToggle(tarea.id)}
+          onClick={() => (terminal ? onRevertir(tarea.id) : onToggle(tarea.id))}
           className="flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors"
           style={{
             borderColor: tarea.completada ? '#6366f1' : inconclusa ? '#9ca3af' : '#d1d5db',
             backgroundColor: tarea.completada ? '#6366f1' : inconclusa ? '#9ca3af' : 'white',
           }}
-          aria-label={tarea.completada ? 'Marcar incompleta' : 'Marcar completa'}
+          aria-label={terminal ? 'Revertir a pendiente' : 'Marcar completa'}
         >
           {tarea.completada && (
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -123,7 +126,7 @@ function TareaItem({
         {!terminal && (
           <>
             <button
-              onClick={() => onInconcluso(tarea.id)}
+              onClick={() => onInconcluso(tarea)}
               className="flex-shrink-0 text-gray-300 hover:text-red-400 p-1"
               aria-label="Marcar inconclusa"
             >
@@ -154,6 +157,7 @@ function SeccionColapsable({
   recurrencias,
   onEdit,
   onToggle,
+  onRevertir,
   onInconcluso,
   onDelete,
 }: {
@@ -162,7 +166,8 @@ function SeccionColapsable({
   recurrencias: Recurrencia[]
   onEdit: (t: Tarea) => void
   onToggle: (id: string) => void
-  onInconcluso: (id: string) => void
+  onRevertir: (id: string) => void
+  onInconcluso: (t: Tarea) => void
   onDelete: (id: string) => void
 }) {
   const [abierta, setAbierta] = useState(false)
@@ -192,6 +197,7 @@ function SeccionColapsable({
             recurrencias={recurrencias}
             onEdit={onEdit}
             onToggle={onToggle}
+            onRevertir={onRevertir}
             onInconcluso={onInconcluso}
             onDelete={onDelete}
           />
@@ -201,8 +207,17 @@ function SeccionColapsable({
 }
 
 export default function Bandeja({ onOpenModal }: { onOpenModal: (t?: Tarea) => void }) {
-  const { tareas, recurrencias, loading, toggleCompletada, marcarInconcluso, eliminarTarea } = useTareas()
+  const {
+    tareas,
+    recurrencias,
+    loading,
+    toggleCompletada,
+    revertirEstado,
+    marcarInconcluso,
+    eliminarTarea,
+  } = useTareas()
   const [archivoOpen, setArchivoOpen] = useState(false)
+  const [pendienteInconcluso, setPendienteInconcluso] = useState<Tarea | null>(null)
 
   if (loading) {
     return (
@@ -269,7 +284,8 @@ export default function Bandeja({ onOpenModal }: { onOpenModal: (t?: Tarea) => v
           recurrencias={recurrencias}
           onEdit={onOpenModal}
           onToggle={toggleCompletada}
-          onInconcluso={marcarInconcluso}
+          onRevertir={revertirEstado}
+          onInconcluso={setPendienteInconcluso}
           onDelete={eliminarTarea}
         />
       ))}
@@ -280,7 +296,8 @@ export default function Bandeja({ onOpenModal }: { onOpenModal: (t?: Tarea) => v
         recurrencias={recurrencias}
         onEdit={onOpenModal}
         onToggle={toggleCompletada}
-        onInconcluso={marcarInconcluso}
+        onRevertir={revertirEstado}
+        onInconcluso={setPendienteInconcluso}
         onDelete={eliminarTarea}
       />
 
@@ -290,11 +307,24 @@ export default function Bandeja({ onOpenModal }: { onOpenModal: (t?: Tarea) => v
         recurrencias={recurrencias}
         onEdit={onOpenModal}
         onToggle={toggleCompletada}
-        onInconcluso={marcarInconcluso}
+        onRevertir={revertirEstado}
+        onInconcluso={setPendienteInconcluso}
         onDelete={eliminarTarea}
       />
 
       {archivoOpen && <ArchivoModal tareas={tareas} onClose={() => setArchivoOpen(false)} />}
+
+      {pendienteInconcluso && (
+        <ConfirmInconclusoModal
+          tarea={pendienteInconcluso}
+          recurrencias={recurrencias}
+          onCancel={() => setPendienteInconcluso(null)}
+          onConfirm={() => {
+            marcarInconcluso(pendienteInconcluso.id)
+            setPendienteInconcluso(null)
+          }}
+        />
+      )}
     </div>
   )
 }
