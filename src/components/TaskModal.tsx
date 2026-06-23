@@ -227,7 +227,7 @@ export default function TaskModal({ tarea, onClose }: Props) {
           <div className="flex items-center gap-1.5 text-xs text-indigo-500 bg-indigo-50 rounded-lg px-3 py-1.5 mb-4">
             <IconRepeat size={12} />
             {modo === 'regla'
-              ? 'Editas la serie: aplica a las ocurrencias futuras pendientes'
+              ? 'Editas la serie completa: los cambios se aplican a todas las ocurrencias.'
               : 'Tarea recurrente — editas solo esta ocurrencia'}
           </div>
         )}
