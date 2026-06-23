@@ -2,12 +2,13 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   useCallback,
 } from 'react'
 import type { ReactNode } from 'react'
 import { v4 as uuidv4 } from 'uuid'
-import type { Tarea, Recurrencia } from '../types'
+import type { Tarea, Recurrencia, EstadoTarea } from '../types'
 import {
   getAllTareas,
   saveTarea,
@@ -22,9 +23,11 @@ interface TareasContextValue {
   tareas: Tarea[]
   recurrencias: Recurrencia[]
   loading: boolean
-  crearTarea: (data: Omit<Tarea, 'id' | 'creadaEn' | 'completada'>) => Promise<void>
+  crearTarea: (data: Omit<Tarea, 'id' | 'creadaEn' | 'completada' | 'estado'>) => Promise<void>
   editarTarea: (id: string, data: Partial<Omit<Tarea, 'id' | 'creadaEn'>>) => Promise<void>
   toggleCompletada: (id: string) => Promise<void>
+  moverEstado: (id: string, estado: EstadoTarea) => Promise<void>
+  marcarInconcluso: (id: string) => Promise<void>
   eliminarTarea: (id: string) => Promise<void>
   crearRecurrencia: (data: Omit<Recurrencia, 'id' | 'creadaEn'>) => Promise<void>
   eliminarRecurrenciaCompleta: (recurrenciaId: string) => Promise<void>
@@ -67,10 +70,37 @@ function ymdToDate(ymd: string): Date {
   return new Date(y, m - 1, d)
 }
 
+const SIETE_DIAS_MS = 7 * 86_400_000
+
+// Aplica el cambio de racha a una recurrencia cuando una de sus instancias
+// pasa a un estado terminal. Invariante: si una racha es > 0, la otra es 0.
+function aplicarRacha(rec: Recurrencia, estado: 'done' | 'inconcluso'): Recurrencia {
+  const rachaActual = rec.rachaActual ?? 0
+  const rachaInconclusa = rec.rachaInconclusa ?? 0
+  return estado === 'done'
+    ? { ...rec, rachaActual: rachaActual + 1, rachaInconclusa: 0 }
+    : { ...rec, rachaInconclusa: rachaInconclusa + 1, rachaActual: 0 }
+}
+
 export function TareasProvider({ children }: { children: ReactNode }) {
   const [tareas, setTareas] = useState<Tarea[]>([])
   const [recurrencias, setRecurrencias] = useState<Recurrencia[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Refs siempre actualizadas para leer el estado vigente desde callbacks sin
+  // depender de closures obsoletos. Las usamos para los cambios de `estado`,
+  // que deben actualizar rachas de forma exacta (no idempotente) y por eso no
+  // pueden vivir dentro de un updater de setState (StrictMode los invoca 2×).
+  // Se sincronizan en efectos (no en render) y se leen desde event handlers,
+  // que siempre corren después del commit → quedan actualizadas a tiempo.
+  const tareasRef = useRef<Tarea[]>(tareas)
+  const recurrenciasRef = useRef<Recurrencia[]>(recurrencias)
+  useEffect(() => { tareasRef.current = tareas }, [tareas])
+  useEffect(() => { recurrenciasRef.current = recurrencias }, [recurrencias])
+
+  // Garantiza que la rutina de apertura (archivar + auto-inconcluso) corra una
+  // sola vez, aunque StrictMode monte el efecto dos veces en desarrollo.
+  const initDone = useRef(false)
 
   // Genera y persiste las instancias faltantes de las recurrencias para la
   // semana que arranca en `weekStart` (lunes). Lee el estado autoritativo
@@ -105,6 +135,7 @@ export function TareasProvider({ children }: { children: ReactNode }) {
           hora: rec.hora,
           fecha,
           completada: false,
+          estado: 'todo',
           creadaEn: new Date().toISOString(),
           recurrenciaId: rec.id,
         })
@@ -120,8 +151,69 @@ export function TareasProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  // Carga inicial + generación de la semana actual.
+  // Rutina de apertura: (1) auto-marca como inconclusas las instancias
+  // recurrentes de días anteriores que sigan en 'todo' (lo que dispara la
+  // racha de inconclusas), y (2) archiva las tareas terminales con más de 7
+  // días desde su último cambio de estado. Lee el estado autoritativo desde
+  // IndexedDB y persiste todo en bloque.
+  const procesarAlAbrir = useCallback(async () => {
+    const [allTareas, allRecs] = await Promise.all([
+      getAllTareas(),
+      getAllRecurrencias(),
+    ])
+    const hoy = toYMD(new Date())
+    const ahoraMs = Date.now()
+
+    // Normaliza rachas (defensivo) y permite acumular incrementos.
+    const recById = new Map<string, Recurrencia>(
+      allRecs.map((r) => [
+        r.id,
+        { ...r, rachaActual: r.rachaActual ?? 0, rachaInconclusa: r.rachaInconclusa ?? 0 },
+      ])
+    )
+    const tareasCambiadas = new Map<string, Tarea>()
+
+    // (1) Auto-marcado de instancias recurrentes vencidas en 'todo'.
+    for (const t of allTareas) {
+      if (t.archivada) continue
+      if (t.recurrenciaId && t.estado === 'todo' && t.fecha && t.fecha < hoy) {
+        tareasCambiadas.set(t.id, {
+          ...t,
+          estado: 'inconcluso',
+          completada: false,
+          estadoCambiadoEn: new Date().toISOString(),
+        })
+        const rec = recById.get(t.recurrenciaId)
+        if (rec) recById.set(rec.id, aplicarRacha(rec, 'inconcluso'))
+      }
+    }
+
+    // (2) Archivado de terminales con más de 7 días (considera lo recién marcado).
+    for (const t of allTareas) {
+      const actual = tareasCambiadas.get(t.id) ?? t
+      if (actual.archivada) continue
+      if (actual.estado === 'done' || actual.estado === 'inconcluso') {
+        const ref = Date.parse(actual.estadoCambiadoEn ?? actual.creadaEn)
+        if (ahoraMs - ref > SIETE_DIAS_MS) {
+          tareasCambiadas.set(t.id, { ...actual, archivada: true })
+        }
+      }
+    }
+
+    await Promise.all([...tareasCambiadas.values()].map(saveTarea))
+    await Promise.all([...recById.values()].map(saveRecurrencia))
+
+    if (tareasCambiadas.size) {
+      setTareas((prev) => prev.map((t) => tareasCambiadas.get(t.id) ?? t))
+    }
+    setRecurrencias([...recById.values()])
+  }, [])
+
+  // Carga inicial + rutina de apertura + generación de la semana actual.
+  // El guard `initDone` evita la doble ejecución del efecto en StrictMode.
   useEffect(() => {
+    if (initDone.current) return
+    initDone.current = true
     ;(async () => {
       const [loadedTareas, loadedRecs] = await Promise.all([
         getAllTareas(),
@@ -130,9 +222,10 @@ export function TareasProvider({ children }: { children: ReactNode }) {
       setTareas(loadedTareas)
       setRecurrencias(loadedRecs)
       setLoading(false)
+      await procesarAlAbrir()
       await generarInstanciasParaSemana(getMonday(new Date()))
     })()
-  }, [generarInstanciasParaSemana])
+  }, [generarInstanciasParaSemana, procesarAlAbrir])
 
   // Pide permiso de notificaciones una vez (no-op en web).
   useEffect(() => {
@@ -146,12 +239,18 @@ export function TareasProvider({ children }: { children: ReactNode }) {
   }, [tareas, loading])
 
   const crearTarea = useCallback(
-    async (data: Omit<Tarea, 'id' | 'creadaEn' | 'completada'>) => {
+    async (data: Omit<Tarea, 'id' | 'creadaEn' | 'completada' | 'estado'>) => {
+      const ahora = new Date().toISOString()
       const nueva: Tarea = {
         ...data,
         id: uuidv4(),
         completada: false,
-        creadaEn: new Date().toISOString(),
+        estado: 'todo',
+        estadoCambiadoEn: ahora,
+        archivada: false,
+        // Base del contador de días: la fecha si la tiene, si no la de creación.
+        fechaAsignada: data.fecha ?? ahora,
+        creadaEn: ahora,
       }
       await saveTarea(nueva)
       setTareas((prev) => [...prev, nueva])
@@ -171,16 +270,65 @@ export function TareasProvider({ children }: { children: ReactNode }) {
     []
   )
 
-  const toggleCompletada = useCallback(async (id: string) => {
-    setTareas((prev) => {
-      const updated = prev.map((t) =>
-        t.id === id ? { ...t, completada: !t.completada } : t
-      )
-      const tarea = updated.find((t) => t.id === id)
-      if (tarea) saveTarea(tarea)
-      return updated
-    })
+  // Núcleo de los cambios de estado. Actualiza `estado`, `completada` y
+  // `estadoCambiadoEn`, persiste y, si la tarea es una instancia recurrente que
+  // entra en un estado terminal, actualiza la racha de su recurrencia.
+  // Lee de refs (no de closures) y escribe valores concretos para que sea
+  // correcto bajo StrictMode (que invoca los updaters dos veces).
+  const setEstado = useCallback(async (id: string, nuevoEstado: EstadoTarea) => {
+    const tarea = tareasRef.current.find((t) => t.id === id)
+    if (!tarea || tarea.estado === nuevoEstado) return
+
+    const actualizada: Tarea = {
+      ...tarea,
+      estado: nuevoEstado,
+      completada: nuevoEstado === 'done',
+      estadoCambiadoEn: new Date().toISOString(),
+    }
+    await saveTarea(actualizada)
+    setTareas((prev) => prev.map((t) => (t.id === id ? actualizada : t)))
+
+    // Racha: solo instancias recurrentes que entran en estado terminal.
+    if (
+      tarea.recurrenciaId &&
+      (nuevoEstado === 'done' || nuevoEstado === 'inconcluso')
+    ) {
+      const rec = recurrenciasRef.current.find((r) => r.id === tarea.recurrenciaId)
+      if (rec) {
+        const actualizadaRec = aplicarRacha(rec, nuevoEstado)
+        await saveRecurrencia(actualizadaRec)
+        setRecurrencias((prev) =>
+          prev.map((r) => (r.id === rec.id ? actualizadaRec : r))
+        )
+      }
+    }
   }, [])
+
+  // Alterna completada: si está completada vuelve a 'todo'; si no, pasa a 'done'.
+  const toggleCompletada = useCallback(
+    async (id: string) => {
+      const tarea = tareasRef.current.find((t) => t.id === id)
+      if (!tarea) return
+      await setEstado(id, tarea.completada ? 'todo' : 'done')
+    },
+    [setEstado]
+  )
+
+  // Mueve una tarea a otra columna del Kanban (todo/doing/done).
+  const moverEstado = useCallback(
+    async (id: string, estado: EstadoTarea) => {
+      await setEstado(id, estado)
+    },
+    [setEstado]
+  )
+
+  // Marca una tarea como inconclusa (estado terminal).
+  const marcarInconcluso = useCallback(
+    async (id: string) => {
+      await setEstado(id, 'inconcluso')
+    },
+    [setEstado]
+  )
 
   const eliminarTarea = useCallback(async (id: string) => {
     await deleteTarea(id)
@@ -270,6 +418,8 @@ export function TareasProvider({ children }: { children: ReactNode }) {
         crearTarea,
         editarTarea,
         toggleCompletada,
+        moverEstado,
+        marcarInconcluso,
         eliminarTarea,
         crearRecurrencia,
         eliminarRecurrenciaCompleta,

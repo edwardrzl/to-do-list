@@ -6,6 +6,11 @@ export type Categoria =
   | 'Recordatorio'
   | 'Otro'
 
+// Estado de la tarea.
+// 'done' e 'inconcluso' son estados terminales. Se mantiene sincronizado con
+// `completada`: completada ⟺ estado === 'done'.
+export type EstadoTarea = 'todo' | 'doing' | 'done' | 'inconcluso'
+
 export interface Tarea {
   id: string
   nombre: string
@@ -13,6 +18,10 @@ export interface Tarea {
   fecha?: string   // 'YYYY-MM-DD'
   hora?: string    // 'HH:MM'
   completada: boolean
+  estado: EstadoTarea
+  estadoCambiadoEn?: string // ISO timestamp del último cambio de `estado`
+  archivada?: boolean       // true → no aparece en ninguna vista normal
+  fechaAsignada?: string    // base del contador de días (= creadaEn si no hay fecha)
   creadaEn: string // ISO timestamp
   recurrenciaId?: string | null // si tiene valor, es una instancia de una recurrencia
 }
@@ -25,6 +34,9 @@ export interface Recurrencia {
   hora?: string
   dias: number[]
   creadaEn: string
+  // Rachas: si una es > 0, la otra es 0 (nunca ambas > 0).
+  rachaActual?: number      // días consecutivos cumplidos (estado 'done')
+  rachaInconclusa?: number  // días consecutivos marcados inconclusos
 }
 
 // Chips del modal en orden Lun..Dom, mapeados a valores de Date.getDay()
@@ -45,6 +57,18 @@ export const CATEGORIAS: Categoria[] = [
   'Estudio',
   'Recordatorio',
   'Otro',
+]
+
+// Columnas del Kanban en orden de avance: todo → doing → done.
+export const KANBAN_COLUMNAS: {
+  estado: EstadoTarea
+  titulo: string
+  col: string    // fondo sutil de la columna
+  header: string // color del texto del header
+}[] = [
+  { estado: 'todo',  titulo: 'Por hacer',   col: 'bg-gray-100',  header: 'text-gray-600' },
+  { estado: 'doing', titulo: 'En progreso', col: 'bg-blue-50',   header: 'text-blue-700' },
+  { estado: 'done',  titulo: 'Hecho',       col: 'bg-green-50',  header: 'text-green-700' },
 ]
 
 export const CATEGORIA_COLORES: Record<Categoria, { bg: string; text: string; dot: string }> = {

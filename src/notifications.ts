@@ -64,7 +64,8 @@ export async function syncNotificaciones(tareas: Tarea[]): Promise<void> {
   const ahora = Date.now()
   const aProgramar = []
   for (const t of tareas) {
-    if (t.completada) continue
+    // No notificar tareas terminales ni archivadas.
+    if (t.completada || t.estado === 'inconcluso' || t.archivada) continue
     const at = tareaDate(t)
     if (!at || at.getTime() <= ahora) continue
     aProgramar.push({

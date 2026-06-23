@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 
 export default function BottomNav() {
-  const base = 'flex flex-col items-center gap-0.5 pt-2 pb-1 px-6 text-xs font-medium transition-colors'
+  const base = 'flex flex-col items-center gap-0.5 pt-2 pb-1 px-4 text-xs font-medium transition-colors'
   const active = 'text-indigo-500'
   const inactive = 'text-gray-400'
 
@@ -15,6 +15,19 @@ export default function BottomNav() {
               <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
             </svg>
             <span>Bandeja</span>
+          </>
+        )}
+      </NavLink>
+
+      <NavLink to="/kanban" className={({ isActive }) => `${base} ${isActive ? active : inactive}`}>
+        {({ isActive }) => (
+          <>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={isActive ? 2.5 : 1.8} strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="5" height="16" rx="1.2"/>
+              <rect x="9.5" y="4" width="5" height="16" rx="1.2"/>
+              <rect x="16" y="4" width="5" height="16" rx="1.2"/>
+            </svg>
+            <span>Kanban</span>
           </>
         )}
       </NavLink>

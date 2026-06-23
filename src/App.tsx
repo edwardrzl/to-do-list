@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import { TareasProvider } from './context/TareasContext'
 import Bandeja from './pages/Bandeja'
+import Kanban from './pages/Kanban'
 import Calendario from './pages/Calendario'
 import BottomNav from './components/BottomNav'
 import TaskModal from './components/TaskModal'
@@ -25,6 +26,7 @@ function AppShell() {
     <div className="flex flex-col h-full max-w-lg mx-auto bg-gray-50 relative">
       <Routes>
         <Route path="/" element={<Bandeja onOpenModal={openModal} />} />
+        <Route path="/kanban" element={<Kanban onEdit={openModal} />} />
         <Route path="/calendario" element={<Calendario onEdit={openModal} />} />
       </Routes>
 

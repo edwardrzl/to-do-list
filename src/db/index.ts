@@ -18,8 +18,8 @@ let _db: IDBPDatabase<TareasDB> | null = null
 
 async function getDB(): Promise<IDBPDatabase<TareasDB>> {
   if (_db) return _db
-  _db = await openDB<TareasDB>('tareas-pwa', 3, {
-    upgrade(db, oldVersion) {
+  _db = await openDB<TareasDB>('tareas-pwa', 5, {
+    async upgrade(db, oldVersion, _newVersion, tx) {
       if (oldVersion < 1) {
         const store = db.createObjectStore('tareas', { keyPath: 'id' })
         store.createIndex('by-fecha', 'fecha')
@@ -32,6 +32,48 @@ async function getDB(): Promise<IDBPDatabase<TareasDB>> {
       }
       if (!db.objectStoreNames.contains('recurrencias')) {
         db.createObjectStore('recurrencias', { keyPath: 'id' })
+      }
+      // v4: agrega `estado` al modelo de tarea. Las tareas existentes se
+      // clasifican según `completada` (done si está completada, todo si no).
+      // v5: agrega `estadoCambiadoEn`, `archivada` y `fechaAsignada` a tareas, y
+      // las rachas a recurrencias. Migración defensiva con valores por defecto.
+      if (oldVersion < 5) {
+        const store = tx.objectStore('tareas')
+        let cursor = await store.openCursor()
+        while (cursor) {
+          const t = cursor.value as Tarea
+          let dirty = false
+          if (!t.estado) {
+            t.estado = t.completada ? 'done' : 'todo'
+            dirty = true
+          }
+          if (!t.estadoCambiadoEn) {
+            t.estadoCambiadoEn = t.creadaEn
+            dirty = true
+          }
+          if (t.archivada === undefined) {
+            t.archivada = false
+            dirty = true
+          }
+          if (!t.fechaAsignada) {
+            // base del contador: la fecha si la tiene, si no la de creación.
+            t.fechaAsignada = t.fecha ?? t.creadaEn
+            dirty = true
+          }
+          if (dirty) await cursor.update(t)
+          cursor = await cursor.continue()
+        }
+
+        const recStore = tx.objectStore('recurrencias')
+        let recCursor = await recStore.openCursor()
+        while (recCursor) {
+          const r = recCursor.value as Recurrencia
+          let dirty = false
+          if (r.rachaActual === undefined) { r.rachaActual = 0; dirty = true }
+          if (r.rachaInconclusa === undefined) { r.rachaInconclusa = 0; dirty = true }
+          if (dirty) await recCursor.update(r)
+          recCursor = await recCursor.continue()
+        }
       }
     },
   })

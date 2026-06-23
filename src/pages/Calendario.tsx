@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import type { Tarea } from '../types'
+import type { Tarea, Recurrencia } from '../types'
 import { useTareas } from '../context/TareasContext'
 import EtiquetaCategoria from '../components/EtiquetaCategoria'
+import IndicadorTarea from '../components/IndicadorTarea'
 
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
@@ -31,12 +32,13 @@ function addDays(date: Date, days: number): Date {
 interface DayColumnProps {
   date: Date
   tareas: Tarea[]
+  recurrencias: Recurrencia[]
   isToday: boolean
   onEdit: (t: Tarea) => void
   onToggle: (id: string) => void
 }
 
-function DayColumn({ date, tareas, isToday, onEdit, onToggle }: DayColumnProps) {
+function DayColumn({ date, tareas, recurrencias, isToday, onEdit, onToggle }: DayColumnProps) {
   const dayIdx = (date.getDay() + 6) % 7
   const dayName = DIAS[dayIdx]
   const dayNum = date.getDate()
@@ -62,42 +64,55 @@ function DayColumn({ date, tareas, isToday, onEdit, onToggle }: DayColumnProps) 
         <p className="text-xs text-gray-300 italic pl-1">Sin tareas</p>
       ) : (
         <div className="space-y-1.5">
-          {sorted.map((t) => (
+          {sorted.map((t) => {
+            const inconclusa = t.estado === 'inconcluso'
+            const terminal = t.completada || inconclusa
+            return (
             <button
               key={t.id}
               onClick={() => onEdit(t)}
-              className={`w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors ${t.completada ? 'opacity-50' : 'hover:bg-white/80'}`}
+              className={`w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors ${terminal ? 'opacity-50' : 'hover:bg-white/80'}`}
             >
               <button
                 onClick={(e) => { e.stopPropagation(); onToggle(t.id) }}
                 className="flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center"
-                style={{ borderColor: t.completada ? '#6366f1' : '#d1d5db', backgroundColor: t.completada ? '#6366f1' : 'white' }}
+                style={{
+                  borderColor: t.completada ? '#6366f1' : inconclusa ? '#9ca3af' : '#d1d5db',
+                  backgroundColor: t.completada ? '#6366f1' : inconclusa ? '#9ca3af' : 'white',
+                }}
               >
                 {t.completada && (
                   <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
                     <path d="M2 6l3 3 5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 )}
+                {inconclusa && (
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round">
+                    <line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>
+                  </svg>
+                )}
               </button>
               <div className="flex-1 min-w-0">
-                <div className={`flex items-center gap-1 text-sm ${t.completada ? 'line-through text-gray-400' : 'text-gray-800 font-medium'}`}>
+                <div className={`flex items-center gap-1 text-sm ${terminal ? 'line-through text-gray-400' : 'text-gray-800 font-medium'}`}>
+                  <IndicadorTarea tarea={t} recurrencias={recurrencias} />
                   {t.hora && <span className="text-indigo-500 font-semibold mr-0.5">{t.hora}</span>}
                   <span className="truncate">{t.nombre}</span>
-                  {t.recurrenciaId && !t.completada && (
+                  {t.recurrenciaId && !terminal && (
                     <svg className="flex-shrink-0 text-indigo-400" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
                       <path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
                     </svg>
                   )}
                 </div>
-                {t.categoria && !t.completada && (
+                {t.categoria && !terminal && (
                   <div className="mt-0.5">
                     <EtiquetaCategoria categoria={t.categoria} />
                   </div>
                 )}
               </div>
             </button>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
@@ -105,7 +120,7 @@ function DayColumn({ date, tareas, isToday, onEdit, onToggle }: DayColumnProps) 
 }
 
 export default function Calendario({ onEdit }: { onEdit: (t: Tarea) => void }) {
-  const { tareas, toggleCompletada, generarInstanciasParaSemana } = useTareas()
+  const { tareas, recurrencias, toggleCompletada, generarInstanciasParaSemana } = useTareas()
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()))
 
   const today = toYMD(new Date())
@@ -120,7 +135,7 @@ export default function Calendario({ onEdit }: { onEdit: (t: Tarea) => void }) {
 
   const tareasPorDia = days.map((d) => {
     const ymd = toYMD(d)
-    return tareas.filter((t) => t.fecha === ymd)
+    return tareas.filter((t) => t.fecha === ymd && !t.archivada)
   })
 
   const mesInicio = MESES[weekStart.getMonth()]
@@ -173,6 +188,7 @@ export default function Calendario({ onEdit }: { onEdit: (t: Tarea) => void }) {
             key={toYMD(d)}
             date={d}
             tareas={tareasPorDia[i]}
+            recurrencias={recurrencias}
             isToday={toYMD(d) === today}
             onEdit={onEdit}
             onToggle={toggleCompletada}
