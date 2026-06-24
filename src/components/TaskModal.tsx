@@ -147,7 +147,7 @@ export default function TaskModal({ tarea, onClose }: Props) {
       }
       await crearRecurrencia({
         nombre,
-        categoria: form.categoria,
+        categoria: form.categoria ?? 'Otro',
         hora: form.hora || undefined,
         dias: diasSel,
       })
@@ -158,7 +158,7 @@ export default function TaskModal({ tarea, onClose }: Props) {
     // Editar una ocurrencia o tarea suelta
     const data = {
       nombre,
-      categoria: form.categoria,
+      categoria: isEditing ? form.categoria : (form.categoria ?? 'Otro'),
       fecha: form.fecha || undefined,
       hora: form.fecha && form.hora ? form.hora : undefined,
     }
@@ -192,7 +192,7 @@ export default function TaskModal({ tarea, onClose }: Props) {
     if (!nombre) { setError('El nombre es obligatorio'); return }
     crearTarea({
       nombre,
-      categoria: form.categoria,
+      categoria: form.categoria ?? 'Otro',
       fecha: form.fecha || undefined,
       hora: form.fecha && form.hora ? form.hora : undefined,
     }).then(() => {
