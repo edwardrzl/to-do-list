@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
-import type { Tarea, Recurrencia } from '../types'
+import type { Tarea, Recurrencia, Categoria } from '../types'
+import { CATEGORIAS, CATEGORIA_COLORES } from '../types'
 import { useTareas } from '../context/TareasContext'
 import EtiquetaCategoria from '../components/EtiquetaCategoria'
 import IndicadorTarea from '../components/IndicadorTarea'
@@ -18,6 +19,18 @@ function todayYMD(): string {
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${d.getFullYear()}-${m}-${day}`
+}
+
+// Priorización por categoría (solo Bandeja): reordenamiento estable POR ENCIMA
+// del orden base. Sube al tope las tareas de la categoría elegida y deja el
+// resto debajo, conservando el orden relativo de cada grupo. No filtra nada.
+// `null` (= "Todas") devuelve la lista sin tocar.
+function priorizarPorCategoria(tareas: Tarea[], cat: Categoria | null): Tarea[] {
+  if (!cat) return tareas
+  return [
+    ...tareas.filter((t) => t.categoria === cat),
+    ...tareas.filter((t) => t.categoria !== cat),
+  ]
 }
 
 function TareaItem({
@@ -218,6 +231,8 @@ export default function Bandeja({ onOpenModal }: { onOpenModal: (t?: Tarea) => v
   } = useTareas()
   const [archivoOpen, setArchivoOpen] = useState(false)
   const [pendienteInconcluso, setPendienteInconcluso] = useState<Tarea | null>(null)
+  // Categoría priorizada (solo en memoria). null = "Todas" (orden normal).
+  const [prioridad, setPrioridad] = useState<Categoria | null>(null)
 
   if (loading) {
     return (
@@ -248,6 +263,12 @@ export default function Bandeja({ onOpenModal }: { onOpenModal: (t?: Tarea) => v
   const completadas = visibles.filter((t) => t.estado === 'done')
   const inconclusas = visibles.filter((t) => t.estado === 'inconcluso')
 
+  // Capa de prioridad por encima del orden base: sube la categoría elegida al
+  // tope de cada grupo, conservando el orden interno. "Todas" no cambia nada.
+  const incompletasPri = priorizarPorCategoria(incompletas, prioridad)
+  const completadasPri = priorizarPorCategoria(completadas, prioridad)
+  const inconclusasPri = priorizarPorCategoria(inconclusas, prioridad)
+
   return (
     <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24">
       <div className="flex items-center justify-between mb-4">
@@ -265,6 +286,39 @@ export default function Bandeja({ onOpenModal }: { onOpenModal: (t?: Tarea) => v
         </button>
       </div>
 
+      {/* Priorización por categoría — reordena (no filtra) la lista. Fila de
+          chips con scroll horizontal; "Todas" deja el orden normal. */}
+      <div className="flex gap-2 overflow-x-auto -mx-4 px-4 pb-2 mb-2 scrollbar-none">
+        <button
+          onClick={() => setPrioridad(null)}
+          className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-all ${
+            prioridad === null
+              ? 'bg-indigo-500 text-white border-indigo-500'
+              : 'bg-white border-gray-200 text-gray-500'
+          }`}
+        >
+          Todas
+        </button>
+        {CATEGORIAS.map((cat) => {
+          const c = CATEGORIA_COLORES[cat]
+          const active = prioridad === cat
+          return (
+            <button
+              key={cat}
+              onClick={() => setPrioridad(active ? null : cat)}
+              className={`flex-shrink-0 inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border transition-all ${
+                active
+                  ? `${c.bg} ${c.text} border-transparent ring-2 ring-offset-1 ring-current`
+                  : 'bg-white border-gray-200 text-gray-500'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full mr-1 ${c.dot}`} />
+              {cat}
+            </button>
+          )
+        })}
+      </div>
+
       {incompletas.length === 0 && completadas.length === 0 && inconclusas.length === 0 && (
         <div className="flex flex-col items-center justify-center pt-16 text-center">
           <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center mb-4">
@@ -277,7 +331,7 @@ export default function Bandeja({ onOpenModal }: { onOpenModal: (t?: Tarea) => v
         </div>
       )}
 
-      {incompletas.map((t) => (
+      {incompletasPri.map((t) => (
         <TareaItem
           key={t.id}
           tarea={t}
@@ -292,7 +346,7 @@ export default function Bandeja({ onOpenModal }: { onOpenModal: (t?: Tarea) => v
 
       <SeccionColapsable
         titulo="Completadas"
-        tareas={completadas}
+        tareas={completadasPri}
         recurrencias={recurrencias}
         onEdit={onOpenModal}
         onToggle={toggleCompletada}
@@ -303,7 +357,7 @@ export default function Bandeja({ onOpenModal }: { onOpenModal: (t?: Tarea) => v
 
       <SeccionColapsable
         titulo="Inconclusas"
-        tareas={inconclusas}
+        tareas={inconclusasPri}
         recurrencias={recurrencias}
         onEdit={onOpenModal}
         onToggle={toggleCompletada}
