@@ -1,6 +1,6 @@
 import { openDB } from 'idb'
 import type { DBSchema, IDBPDatabase, IDBPDatabase as RawIDBPDatabase } from 'idb'
-import type { Tarea, Recurrencia } from '../types'
+import type { Tarea, Recurrencia, Categoria } from '../types'
 
 interface TareasDB extends DBSchema {
   tareas: {
@@ -80,7 +80,7 @@ async function getDB(): Promise<IDBPDatabase<TareasDB>> {
       // 'Recordatorio' → 'Compras'. Sin esto, las tareas guardadas con el
       // nombre viejo perderían su color (lookup undefined en CATEGORIA_COLORES).
       if (oldVersion < 6) {
-        const RENOMBRES: Record<string, string> = {
+        const RENOMBRES: Record<string, Categoria> = {
           Salud: 'Citas',
           Recordatorio: 'Compras',
         }
@@ -88,10 +88,12 @@ async function getDB(): Promise<IDBPDatabase<TareasDB>> {
           const store = tx.objectStore(storeName)
           let cursor = await store.openCursor()
           while (cursor) {
-            const item = cursor.value as { categoria?: string }
-            const nuevo = item.categoria && RENOMBRES[item.categoria]
+            const item = cursor.value as Tarea | Recurrencia
+            const actual = item.categoria
+            const nuevo = actual ? RENOMBRES[actual] : undefined
             if (nuevo) {
-              await cursor.update({ ...item, categoria: nuevo })
+              item.categoria = nuevo
+              await cursor.update(item)
             }
             cursor = await cursor.continue()
           }
