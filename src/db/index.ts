@@ -18,7 +18,7 @@ let _db: IDBPDatabase<TareasDB> | null = null
 
 async function getDB(): Promise<IDBPDatabase<TareasDB>> {
   if (_db) return _db
-  _db = await openDB<TareasDB>('tareas-pwa', 5, {
+  _db = await openDB<TareasDB>('tareas-pwa', 6, {
     async upgrade(db, oldVersion, _newVersion, tx) {
       if (oldVersion < 1) {
         const store = db.createObjectStore('tareas', { keyPath: 'id' })
@@ -73,6 +73,28 @@ async function getDB(): Promise<IDBPDatabase<TareasDB>> {
           if (r.rachaInconclusa === undefined) { r.rachaInconclusa = 0; dirty = true }
           if (dirty) await recCursor.update(r)
           recCursor = await recCursor.continue()
+        }
+      }
+
+      // v6: renombra categorías existentes. 'Salud' → 'Citas',
+      // 'Recordatorio' → 'Compras'. Sin esto, las tareas guardadas con el
+      // nombre viejo perderían su color (lookup undefined en CATEGORIA_COLORES).
+      if (oldVersion < 6) {
+        const RENOMBRES: Record<string, string> = {
+          Salud: 'Citas',
+          Recordatorio: 'Compras',
+        }
+        for (const storeName of ['tareas', 'recurrencias'] as const) {
+          const store = tx.objectStore(storeName)
+          let cursor = await store.openCursor()
+          while (cursor) {
+            const item = cursor.value as { categoria?: string }
+            const nuevo = item.categoria && RENOMBRES[item.categoria]
+            if (nuevo) {
+              await cursor.update({ ...item, categoria: nuevo })
+            }
+            cursor = await cursor.continue()
+          }
         }
       }
     },

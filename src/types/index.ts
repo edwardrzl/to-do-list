@@ -1,9 +1,9 @@
 export type Categoria =
   | 'Trabajo'
   | 'Personal'
-  | 'Salud'
+  | 'Citas'
   | 'Estudio'
-  | 'Recordatorio'
+  | 'Compras'
   | 'Otro'
 
 // Estado de la tarea.
@@ -53,9 +53,9 @@ export const DIAS_SEMANA: { label: string; value: number }[] = [
 export const CATEGORIAS: Categoria[] = [
   'Trabajo',
   'Personal',
-  'Salud',
+  'Citas',
   'Estudio',
-  'Recordatorio',
+  'Compras',
   'Otro',
 ]
 
@@ -72,10 +72,10 @@ export const KANBAN_COLUMNAS: {
 ]
 
 export const CATEGORIA_COLORES: Record<Categoria, { bg: string; text: string; dot: string }> = {
-  Trabajo:      { bg: 'bg-blue-100',   text: 'text-blue-700',   dot: 'bg-blue-500' },
-  Personal:     { bg: 'bg-green-100',  text: 'text-green-700',  dot: 'bg-green-500' },
-  Salud:        { bg: 'bg-red-100',    text: 'text-red-700',    dot: 'bg-red-500' },
-  Estudio:      { bg: 'bg-amber-100',  text: 'text-amber-700',  dot: 'bg-amber-500' },
-  Recordatorio: { bg: 'bg-orange-100', text: 'text-orange-700', dot: 'bg-orange-500' },
-  Otro:         { bg: 'bg-gray-100',   text: 'text-gray-600',   dot: 'bg-gray-400' },
+  Trabajo:  { bg: 'bg-blue-100',   text: 'text-blue-700',   dot: 'bg-blue-500' },
+  Personal: { bg: 'bg-green-100',  text: 'text-green-700',  dot: 'bg-green-500' },
+  Citas:    { bg: 'bg-red-100',    text: 'text-red-700',    dot: 'bg-red-500' },
+  Estudio:  { bg: 'bg-amber-100',  text: 'text-amber-700',  dot: 'bg-amber-500' },
+  Compras:  { bg: 'bg-orange-100', text: 'text-orange-700', dot: 'bg-orange-500' },
+  Otro:     { bg: 'bg-gray-100',   text: 'text-gray-600',   dot: 'bg-gray-400' },
 }

@@ -22,7 +22,7 @@ Aplicación web progresiva (PWA) de gestión de tareas para uso personal. Diseñ
 - **Bandeja principal** — lista de todas las tareas, ordenadas por fecha ascendente (sueltas al final). Sección de completadas colapsable.
 - **Vista semanal** — calendario de lunes a domingo con navegación de semana en semana. Las tareas con hora aparecen ordenadas dentro de su día.
 - **Modal de creación/edición** — nombre (obligatorio), categoría con chip de color, fecha y hora opcionales. Enter guarda rápido y deja el formulario abierto para crear otra.
-- **Categorías con color fijo** — Trabajo (azul), Personal (verde), Salud (rojo), Estudio (ámbar), Recordatorio (naranja), Otro (gris).
+- **Categorías con color fijo** — Trabajo (azul), Personal (verde), Citas (rojo), Estudio (ámbar), Compras (naranja), Otro (gris).
 - **Swipe para eliminar** — deslizar a la izquierda en una tarea expone el botón de borrado.
 - **Offline-first** — service worker con precaching de todos los assets. La app arranca y funciona sin conexión.
 - **Instalable** — manifest PWA configurado para `display: standalone`; se puede agregar a la pantalla de inicio en iOS y Android.
@@ -94,7 +94,7 @@ npm run preview
 interface Tarea {
   id: string           // UUID v4 generado en cliente
   nombre: string       // Obligatorio
-  categoria?: 'Trabajo' | 'Personal' | 'Salud' | 'Estudio' | 'Recordatorio' | 'Otro'
+  categoria?: 'Trabajo' | 'Personal' | 'Citas' | 'Estudio' | 'Compras' | 'Otro'
   fecha?: string       // 'YYYY-MM-DD' — opcional
   hora?: string        // 'HH:MM'     — solo válida si hay fecha
   completada: boolean
