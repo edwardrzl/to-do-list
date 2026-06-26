@@ -214,7 +214,10 @@ export default function TaskModal({ tarea, onClose }: Props) {
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="w-full max-w-lg bg-white rounded-t-2xl p-5 pb-8 shadow-2xl max-h-[92vh] overflow-y-auto">
+      <div className="w-full max-w-lg bg-white rounded-t-2xl shadow-2xl max-h-[92dvh] flex flex-col">
+        {/* Contenido scrolleable: permite alcanzar fecha/hora/repetir con el
+            teclado abierto sin tener que cerrarlo */}
+        <div className="overflow-y-auto px-5 pt-5 pb-2 flex-1">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-800">{titulo}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none p-1" aria-label="Cerrar">
@@ -263,7 +266,16 @@ export default function TaskModal({ tarea, onClose }: Props) {
               return (
                 <button
                   key={cat}
-                  onClick={() => handleChange('categoria', active ? undefined : (cat as Categoria))}
+                  type="button"
+                  // Evita que la chip robe el foco del input de nombre: así el
+                  // teclado virtual permanece abierto al asignar categoría.
+                  // preventDefault en pointer/mouse down impide el blur; la
+                  // acción se ejecuta en el mismo pointerdown (funciona en touch).
+                  onMouseDown={(e) => e.preventDefault()}
+                  onPointerDown={(e) => {
+                    e.preventDefault()
+                    handleChange('categoria', active ? undefined : (cat as Categoria))
+                  }}
                   className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
                     active
                       ? `${c.bg} ${c.text} border-transparent ring-2 ring-offset-1 ring-current`
@@ -358,31 +370,6 @@ export default function TaskModal({ tarea, onClose }: Props) {
           </div>
         )}
 
-        {/* Acciones principales */}
-        <div className="flex gap-3">
-          {/* En tareas sueltas mostramos el Eliminar simple a la izquierda */}
-          {isEditing && !esInstancia && (
-            <button
-              onClick={handleEliminarOcurrencia}
-              className="px-4 py-3 rounded-xl text-red-500 border border-red-200 text-sm font-medium hover:bg-red-50 transition-colors"
-            >
-              Eliminar
-            </button>
-          )}
-          <button
-            onClick={modo === 'regla' ? () => setModo('normal') : onClose}
-            className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
-          >
-            {modo === 'regla' ? 'Volver' : 'Cancelar'}
-          </button>
-          <button
-            onClick={handleGuardar}
-            className="flex-1 py-3 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 active:bg-indigo-700 transition-colors"
-          >
-            Guardar
-          </button>
-        </div>
-
         {/* Opciones de serie — solo en instancias recurrentes, modo normal */}
         {esInstancia && modo === 'normal' && recurrencia && (
           <div className="mt-5 pt-4 border-t border-gray-100 space-y-2">
@@ -408,6 +395,33 @@ export default function TaskModal({ tarea, onClose }: Props) {
             </button>
           </div>
         )}
+        </div>
+
+        {/* Acciones principales — fijas abajo para que sigan accesibles
+            aunque el teclado reduzca la pantalla y el contenido scrollee */}
+        <div className="shrink-0 sticky bottom-0 flex gap-3 px-5 py-4 border-t border-gray-100 bg-white rounded-b-2xl">
+          {/* En tareas sueltas mostramos el Eliminar simple a la izquierda */}
+          {isEditing && !esInstancia && (
+            <button
+              onClick={handleEliminarOcurrencia}
+              className="px-4 py-3 rounded-xl text-red-500 border border-red-200 text-sm font-medium hover:bg-red-50 transition-colors"
+            >
+              Eliminar
+            </button>
+          )}
+          <button
+            onClick={modo === 'regla' ? () => setModo('normal') : onClose}
+            className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
+          >
+            {modo === 'regla' ? 'Volver' : 'Cancelar'}
+          </button>
+          <button
+            onClick={handleGuardar}
+            className="flex-1 py-3 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 active:bg-indigo-700 transition-colors"
+          >
+            Guardar
+          </button>
+        </div>
       </div>
     </div>
   )
